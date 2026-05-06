@@ -1,8 +1,5 @@
 /**
- * server.js - SyncDoc Socket.IO Server
- * ─────────────────────────────────────────────────────────────
- * This server handles real-time synchronization between users.
- * Deploy this to Render or similar Node.js hosting.
+ * server.js - SyncDoc Socket.IO Server (Updated with Drawing)
  */
 
 const express = require('express');
@@ -16,65 +13,55 @@ app.use(cors());
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: "*", // Adjust this to your DOMAIN_URL in production
+        origin: "*",
         methods: ["GET", "POST"]
     }
 });
 
-// Rooms state (optional: you could store active page per room here)
 const roomData = {};
 
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
-    // Join a room based on the file hash
     socket.on('joinRoom', (data) => {
         const { room } = data;
         socket.join(room);
-        console.log(`User ${socket.id} joined room: ${room}`);
-
-        // Track user count in room
+        
         if (!roomData[room]) roomData[room] = { users: 0 };
         roomData[room].users++;
-
         io.to(room).emit('userCount', roomData[room].users);
     });
 
-    // Handle Page Change Sync
     socket.on('pageChange', (data) => {
-        const { room, pageNum } = data;
-        socket.to(room).emit('pageChange', { pageNum });
+        socket.to(data.room).emit('pageChange', { pageNum: data.pageNum });
     });
 
-    // Handle Scroll Sync
     socket.on('scrollSync', (data) => {
-        const { room, scrollTop, scrollLeft, totalHeight, totalWidth } = data;
-        socket.to(room).emit('scrollSync', { scrollTop, scrollLeft, totalHeight, totalWidth });
+        socket.to(data.room).emit('scrollSync', data);
     });
 
-    // Handle Highlight Sync
     socket.on('highlightSync', (data) => {
-        const { room, pageNum, rect } = data;
-        socket.to(room).emit('highlightSync', { pageNum, rect });
+        socket.to(data.room).emit('highlightSync', data);
     });
 
-    // Cleanup on disconnect
+    // Handle Real-time Drawing
+    socket.on('drawSync', (data) => {
+        socket.to(data.room).emit('drawSync', data);
+    });
+
+    // Handle Clear Marks
+    socket.on('clearSync', (data) => {
+        socket.to(data.room).emit('clearSync', data);
+    });
+
     socket.on('disconnecting', () => {
         socket.rooms.forEach(room => {
             if (roomData[room]) {
                 roomData[room].users--;
                 io.to(room).emit('userCount', roomData[room].users);
-                
-                // Remove room data if empty
-                if (roomData[room].users <= 0) {
-                    delete roomData[room];
-                }
+                if (roomData[room].users <= 0) delete roomData[room];
             }
         });
-    });
-
-    socket.on('disconnect', () => {
-        console.log('User disconnected:', socket.id);
     });
 });
 
